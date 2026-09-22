@@ -5,27 +5,24 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
-
-def _bool_env(name: str, default: str = "false") -> bool:
-    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "si", "sí"}
-
-
-IMAP_SERVER = os.getenv("IMAP_SERVER", "").strip()
-IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
+GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "").strip()
+GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "").strip()
+GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "").strip()
 EMAIL_ACCOUNT = os.getenv("EMAIL_ACCOUNT", "").strip()
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "").strip()
-MAILBOX = os.getenv("MAILBOX", "INBOX").strip() or "INBOX"
+MAILBOX = os.getenv("MAILBOX", "inbox").strip().lower() or "inbox"
 SUBJECT_KEYWORD = os.getenv("SUBJECT_KEYWORD", "contrato").strip().lower() or "contrato"
-PEEK_ONLY = _bool_env("PEEK_ONLY", "true")
+GRAPH_SCOPE = ["https://graph.microsoft.com/.default"]
+GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 
 
 def validate() -> None:
     faltantes = [
         nombre
         for nombre, valor in {
-            "IMAP_SERVER": IMAP_SERVER,
+            "GRAPH_TENANT_ID": GRAPH_TENANT_ID,
+            "GRAPH_CLIENT_ID": GRAPH_CLIENT_ID,
+            "GRAPH_CLIENT_SECRET": GRAPH_CLIENT_SECRET,
             "EMAIL_ACCOUNT": EMAIL_ACCOUNT,
-            "EMAIL_PASSWORD": EMAIL_PASSWORD,
         }.items()
         if not valor
     ]
@@ -33,5 +30,5 @@ def validate() -> None:
         raise SystemExit(
             "Faltan variables en .env: "
             + ", ".join(faltantes)
-            + ". Copia .env.example a .env y completa los datos."
+            + ". Copia .env.example a .env y completa los datos de Azure."
         )
