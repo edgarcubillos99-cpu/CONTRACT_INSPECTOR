@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from typing import Any
 from urllib.parse import quote
 
@@ -68,8 +69,8 @@ def _explicar_error(respuesta: requests.Response) -> str:
         )
     if respuesta.status_code == 403:
         return (
-            "Sin permiso para leer el buzón (403). Falta Mail.Read de tipo Application "
-            "y Grant admin consent. Detalle: "
+            "Sin permiso para el buzón (403). Se necesitan Mail.Read y Mail.ReadWrite "
+            "de tipo Application, más Grant admin consent. Detalle: "
             f"{mensaje}"
         )
     if respuesta.status_code == 404:
@@ -88,6 +89,22 @@ def graph_get(ruta: str, params: dict[str, str] | None = None) -> dict[str, Any]
     return respuesta.json()
 
 
+def graph_patch(ruta: str, payload: dict[str, Any]) -> None:
+    url = ruta if ruta.startswith("http") else f"{GRAPH_BASE_URL}{ruta}"
+    cabeceras = {**_headers(), "Content-Type": "application/json"}
+    respuesta = requests.patch(url, headers=cabeceras, json=payload, timeout=30)
+    if not respuesta.ok:
+        raise GraphError(_explicar_error(respuesta), status_code=respuesta.status_code)
+
+
+def graph_get_bytes(ruta: str) -> bytes:
+    url = ruta if ruta.startswith("http") else f"{GRAPH_BASE_URL}{ruta}"
+    respuesta = requests.get(url, headers=_headers(), timeout=60)
+    if not respuesta.ok:
+        raise GraphError(_explicar_error(respuesta), status_code=respuesta.status_code)
+    return respuesta.content
+
+
 def _buzon() -> str:
     return quote(EMAIL_ACCOUNT)
 
@@ -97,7 +114,7 @@ def listar_mensajes_no_leidos() -> list[dict[str, Any]]:
     ruta = f"/users/{_buzon()}/mailFolders/{quote(MAILBOX)}/messages"
     params = {
         "$filter": "isRead eq false",
-        "$select": "id,subject,from,toRecipients,receivedDateTime,body,hasAttachments,isRead",
+        "$select": "id,subject,from,toRecipients,receivedDateTime,body,hasAttachments,isRead,conversationId",
         "$top": "50",
         "$orderby": "receivedDateTime desc",
     }
@@ -111,6 +128,58 @@ def listar_mensajes_no_leidos() -> list[dict[str, Any]]:
 
 def listar_adjuntos(message_id: str) -> list[dict[str, Any]]:
     ruta = f"/users/{_buzon()}/messages/{quote(message_id)}/attachments"
-    params = {"$select": "id,name,contentType,size,isInline"}
-    data = graph_get(ruta, params=params)
+    data = graph_get(ruta)
     return data.get("value") or []
+
+
+def listar_adjuntos_de_item(message_id: str, attachment_id: str) -> list[dict[str, Any]]:
+    rutas = (
+        f"/users/{_buzon()}/messages/{quote(message_id)}"
+        f"/attachments/{quote(attachment_id)}/item/attachments",
+        f"/users/{_buzon()}/messages/{quote(message_id)}"
+        f"/attachments/{quote(attachment_id)}/microsoft.graph.itemAttachment/item/attachments",
+    )
+    for ruta in rutas:
+        try:
+            data = graph_get(ruta)
+            return data.get("value") or []
+        except GraphError:
+            continue
+    return []
+
+
+def descargar_adjunto(message_id: str, attachment_id: str) -> bytes:
+    ruta = (
+        f"/users/{_buzon()}/messages/{quote(message_id)}"
+        f"/attachments/{quote(attachment_id)}"
+    )
+    data = graph_get(ruta)
+    if data.get("contentBytes"):
+        return base64.b64decode(data["contentBytes"])
+    return graph_get_bytes(f"{ruta}/$value")
+
+
+def descargar_adjunto_anidado(
+    message_id: str, item_attachment_id: str, file_attachment_id: str
+) -> bytes:
+    bases = (
+        f"/users/{_buzon()}/messages/{quote(message_id)}"
+        f"/attachments/{quote(item_attachment_id)}/item/attachments/{quote(file_attachment_id)}",
+        f"/users/{_buzon()}/messages/{quote(message_id)}"
+        f"/attachments/{quote(item_attachment_id)}"
+        f"/microsoft.graph.itemAttachment/item/attachments/{quote(file_attachment_id)}",
+    )
+    ultimo: GraphError | None = None
+    for ruta in bases:
+        try:
+            data = graph_get(ruta)
+            if data.get("contentBytes"):
+                return base64.b64decode(data["contentBytes"])
+            return graph_get_bytes(f"{ruta}/$value")
+        except GraphError as exc:
+            ultimo = exc
+    raise ultimo or GraphError("No se pudo descargar el adjunto anidado.")
+
+
+def marcar_como_leido(message_id: str) -> None:
+    graph_patch(f"/users/{_buzon()}/messages/{quote(message_id)}", {"isRead": True})

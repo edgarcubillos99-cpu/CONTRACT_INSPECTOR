@@ -1,0 +1,29 @@
+services:
+  inspector:
+    build: .
+    env_file:
+      - .env
+    environment:
+      UBERSMITH_URL: ${UBERSMITH_URL}
+      UBERSMITH_USER: ${UBERSMITH_USER}
+      UBERSMITH_PASSWORD: ${UBERSMITH_PASSWORD}
+      EMAIL_ACCOUNT: ${EMAIL_ACCOUNT}
+      GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID}
+      GRAPH_CLIENT_SECRET: ${GRAPH_CLIENT_SECRET}
+      GRAPH_TENANT_ID: ${GRAPH_TENANT_ID}
+      SUBJECT_KEYWORD: ${SUBJECT_KEYWORD}
+      MAILBOX: ${MAILBOX}
+      PORT: "8080"
+      POLL_INTERVAL: ${POLL_INTERVAL:-60}
+      MARK_AS_READ: ${MARK_AS_READ:-false}
+      PROCESSED_FILE: /app/data/processed_ids.txt
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - inspector_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  inspector_data:
