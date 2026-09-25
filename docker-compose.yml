@@ -16,6 +16,7 @@ services:
       PORT: "8080"
       POLL_INTERVAL: ${POLL_INTERVAL:-60}
       MARK_AS_READ: ${MARK_AS_READ:-false}
+      REPLY_INCOMPLETE: ${REPLY_INCOMPLETE:-true}
       PROCESSED_FILE: /app/data/processed_ids.txt
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}

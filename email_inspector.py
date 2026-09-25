@@ -42,6 +42,7 @@ class CorreoCandidato:
     asunto: str
     fecha: str
     cuerpo: str
+    email_remitente: str = ""
     adjuntos: list[Adjunto] = field(default_factory=list)
 
 
@@ -79,6 +80,13 @@ def _direccion(bloque: dict[str, Any] | None) -> str:
     if nombre and address:
         return f"{nombre} <{address}>"
     return nombre or address
+
+
+def _email_address(bloque: dict[str, Any] | None) -> str:
+    if not bloque:
+        return ""
+    correo = bloque.get("emailAddress") or {}
+    return (correo.get("address") or "").strip()
 
 
 def _destinatarios(mensaje: dict[str, Any]) -> str:
@@ -234,6 +242,7 @@ def inspeccionar_correos() -> list[CorreoCandidato]:
                 asunto=asunto,
                 fecha=mensaje.get("receivedDateTime") or "",
                 cuerpo=_cuerpo(mensaje),
+                email_remitente=_email_address(mensaje.get("from")),
                 adjuntos=_adjuntos_de(mensaje_id) if mensaje.get("hasAttachments") else [],
             )
         )

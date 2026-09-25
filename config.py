@@ -31,6 +31,13 @@ MARK_AS_READ = os.getenv("MARK_AS_READ", "false").strip().lower() in {
     "si",
     "sí",
 }
+REPLY_INCOMPLETE = os.getenv("REPLY_INCOMPLETE", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "si",
+    "sí",
+}
 PROCESSED_FILE = os.getenv("PROCESSED_FILE", "data/processed_ids.txt").strip() or (
     "data/processed_ids.txt"
 )

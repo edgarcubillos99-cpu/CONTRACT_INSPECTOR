@@ -69,8 +69,8 @@ def _explicar_error(respuesta: requests.Response) -> str:
         )
     if respuesta.status_code == 403:
         return (
-            "Sin permiso para el buzón (403). Se necesitan Mail.Read y Mail.ReadWrite "
-            "de tipo Application, más Grant admin consent. Detalle: "
+            "Sin permiso para el buzón (403). Se necesitan Mail.Read, Mail.ReadWrite "
+            "y Mail.Send de tipo Application, más Grant admin consent. Detalle: "
             f"{mensaje}"
         )
     if respuesta.status_code == 404:
@@ -95,6 +95,20 @@ def graph_patch(ruta: str, payload: dict[str, Any]) -> None:
     respuesta = requests.patch(url, headers=cabeceras, json=payload, timeout=30)
     if not respuesta.ok:
         raise GraphError(_explicar_error(respuesta), status_code=respuesta.status_code)
+
+
+def graph_post(ruta: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    url = ruta if ruta.startswith("http") else f"{GRAPH_BASE_URL}{ruta}"
+    cabeceras = {**_headers(), "Content-Type": "application/json"}
+    respuesta = requests.post(url, headers=cabeceras, json=payload, timeout=30)
+    if not respuesta.ok:
+        raise GraphError(_explicar_error(respuesta), status_code=respuesta.status_code)
+    if not respuesta.content:
+        return None
+    try:
+        return respuesta.json()
+    except ValueError:
+        return None
 
 
 def graph_get_bytes(ruta: str) -> bytes:
@@ -183,3 +197,11 @@ def descargar_adjunto_anidado(
 
 def marcar_como_leido(message_id: str) -> None:
     graph_patch(f"/users/{_buzon()}/messages/{quote(message_id)}", {"isRead": True})
+
+
+def responder_mensaje(message_id: str, comentario: str) -> None:
+    """Responde en el mismo hilo. Requiere Mail.Send de tipo Application."""
+    graph_post(
+        f"/users/{_buzon()}/messages/{quote(message_id)}/reply",
+        {"comment": comentario},
+    )

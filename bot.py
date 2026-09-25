@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from ai_reviewer import AIReviewError, revisar_correo
+from ai_reviewer import AIReviewError, RevisionIA, revisar_correo
 from config import (
     EMAIL_ACCOUNT,
     MARK_AS_READ,
@@ -14,6 +14,7 @@ from config import (
     POLL_INTERVAL,
     PORT,
     PROCESSED_FILE,
+    REPLY_INCOMPLETE,
     SUBJECT_KEYWORD,
     validate,
 )
@@ -24,7 +25,7 @@ from email_inspector import (
     resumir,
     tipo_hilo,
 )
-from graph_client import GraphError, marcar_como_leido
+from graph_client import GraphError, marcar_como_leido, responder_mensaje
 from processed_store import ProcessedStore
 from ubersmith_client import UbersmithError, publicar_contrato
 
@@ -52,6 +53,34 @@ def _cerrar(candidato: CorreoCandidato) -> None:
         print(f"  No se pudo marcar leído ({exc}). Quedó registrado en memoria.")
 
 
+def _aviso_campos(revision: RevisionIA) -> str:
+    faltantes = revision.campos_faltantes or ["(no se detallaron)"]
+    lista = "\n".join(f"- {campo}" for campo in faltantes)
+    ticket = revision.ticket_id or "no se encontró"
+    archivo = revision.archivo or "el PDF adjunto"
+    return (
+        "Hola,\n\n"
+        "El inspector automático de contratos revisó el adjunto y no puede "
+        "cargarlo porque faltan campos por completar:\n\n"
+        f"{lista}\n\n"
+        f"Archivo: {archivo}\n"
+        f"Ticket detectado: {ticket}\n\n"
+        "Complete el contrato y reenvíelo a este correo con la palabra "
+        '"contrato" en el asunto.\n\n'
+        "Saludos,\n"
+        "Inspector de contratos Osnet"
+    )
+
+
+def _avisar_incompleto(candidato: CorreoCandidato, revision: RevisionIA) -> None:
+    destino = candidato.email_remitente or candidato.de
+    if not REPLY_INCOMPLETE:
+        print("  REPLY_INCOMPLETE=false: no se envió aviso.")
+        return
+    responder_mensaje(candidato.uid, _aviso_campos(revision))
+    print(f"  Aviso de campos incompletos enviado a {destino}.")
+
+
 def _procesar(candidato: CorreoCandidato) -> None:
     print(f"Procesando: {candidato.asunto!r} ({tipo_hilo(candidato.asunto)})")
     pdfs = descargar_pdfs(candidato)
@@ -66,8 +95,14 @@ def _procesar(candidato: CorreoCandidato) -> None:
         print("  La IA no lo clasificó como contrato firmado.")
         _cerrar(candidato)
         return
+    if not revision.campos_completos:
+        print(f"  Campos incompletos: {', '.join(revision.campos_faltantes) or 'sin detalle'}")
+        _avisar_incompleto(candidato, revision)
+        _cerrar(candidato)
+        return
     if not revision.ticket_id:
         print("  La IA no encontró ticket_id.")
+        _avisar_incompleto(candidato, revision)
         _cerrar(candidato)
         return
 
@@ -137,6 +172,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "last_error": _estado["last_error"],
                     "processed": len(_vistos),
                     "mark_as_read": MARK_AS_READ,
+                    "reply_incomplete": REPLY_INCOMPLETE,
                     "openai_model": OPENAI_MODEL,
                 },
             )
@@ -165,6 +201,8 @@ def main() -> None:
     print(f"Revisión de contratos con {OPENAI_MODEL}")
     if not MARK_AS_READ:
         print("MARK_AS_READ=false: no se marcarán correos como leídos.")
+    if REPLY_INCOMPLETE:
+        print("Si faltan campos, se responderá al remitente (Mail.Send).")
     servidor.serve_forever()
 
 
