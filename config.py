@@ -22,6 +22,7 @@ UBERSMITH_PASSWORD = (
     os.getenv("UBERSMITH_PASSWORD", "").strip()
     or os.getenv("UBERSMITH_TOKEN", "").strip()
 )
+UBERSMITH_QUEUE = os.getenv("UBERSMITH_QUEUE", "").strip()
 PORT = int(os.getenv("PORT", "8080") or "8080")
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "60") or "60")
 MARK_AS_READ = os.getenv("MARK_AS_READ", "false").strip().lower() in {
@@ -55,6 +56,7 @@ def validate() -> None:
             "EMAIL_ACCOUNT": EMAIL_ACCOUNT,
             "UBERSMITH_USER": UBERSMITH_USER,
             "UBERSMITH_PASSWORD": UBERSMITH_PASSWORD,
+            "UBERSMITH_QUEUE": UBERSMITH_QUEUE,
             "OPENAI_API_KEY": OPENAI_API_KEY,
         }.items()
         if not valor

@@ -27,7 +27,7 @@ from email_inspector import (
 )
 from graph_client import GraphError, marcar_como_leido, responder_mensaje
 from processed_store import ProcessedStore
-from ubersmith_client import UbersmithError, publicar_contrato
+from ubersmith_client import UbersmithError, actualizar_queue, publicar_contrato
 
 _lock = threading.Lock()
 _vistos = ProcessedStore(PROCESSED_FILE)
@@ -117,6 +117,8 @@ def _procesar(candidato: CorreoCandidato) -> None:
     print(f"  Enviando {adjunto.nombre} a Ubersmith...")
     post_id = publicar_contrato(revision.ticket_id, adjunto.nombre, contenido)
     print(f"  Comentario creado en ticket {revision.ticket_id} (post {post_id}).")
+    actualizar_queue(revision.ticket_id)
+    print(f"  Queue del ticket {revision.ticket_id} actualizada.")
     _cerrar(candidato)
 
 

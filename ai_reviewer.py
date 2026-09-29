@@ -12,22 +12,23 @@ from openai import OpenAI
 from config import OPENAI_API_KEY, OPENAI_MODEL
 from email_inspector import Adjunto, CorreoCandidato, tipo_hilo
 
+# Etiquetas del Acuerdo de Servicio Residencial OSN-FRM-FIN-E001 (página 1).
 CAMPOS_OBLIGATORIOS = (
     "Nombre",
     "Dirección Postal",
-    "Pueblo y código postal de facturación",
+    "Pueblo, Código Postal (facturación)",
     "Teléfono(s)",
     "# Ticket",
     "Email",
     "Persona de Contacto",
-    "Dirección de instalación",
-    "Pueblo y código postal de instalación",
+    "Dirección (#Apt. Condominio, Urb.)",
+    "Pueblo, Código Postal (instalación)",
     "Contacto Residencia",
     "Teléfono Contacto",
-    "Plan de servicio",
-    "Término del acuerdo",
-    "Firma del suscriptor",
-    "Fecha de firma",
+    "Plan de servicio (OSEssential / OSSpeed / OSPremium)",
+    "Término del Acuerdo",
+    "Firma del Suscriptor",
+    "Fecha",
 )
 
 
