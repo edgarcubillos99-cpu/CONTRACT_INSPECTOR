@@ -12,25 +12,6 @@ from openai import OpenAI
 from config import OPENAI_API_KEY, OPENAI_MODEL
 from email_inspector import Adjunto, CorreoCandidato, tipo_hilo
 
-CAMPOS_OBLIGATORIOS = (
-    "Nombre",
-    "Dirección Postal",
-    "Pueblo y código postal de facturación",
-    "Teléfono(s)",
-    "# Ticket",
-    "Email",
-    "Persona de Contacto",
-    "Dirección de instalación",
-    "Pueblo y código postal de instalación",
-    "Contacto Residencia",
-    "Teléfono Contacto",
-    "Plan de servicio",
-    "Término del acuerdo",
-    "Firma del suscriptor",
-    "Fecha de firma",
-)
-
-
 @dataclass
 class RevisionIA:
     es_contrato_firmado: bool
@@ -70,21 +51,6 @@ def _imagenes_pdf(pdf_bytes: bytes, max_paginas: int = 2) -> list[str]:
     return imagenes
 
 
-def _lista_campos(valor: object) -> list[str]:
-    if not isinstance(valor, list):
-        return []
-    limpios: list[str] = []
-    vistos: set[str] = set()
-    for item in valor:
-        nombre = str(item or "").strip()
-        clave = nombre.casefold()
-        if not nombre or clave in vistos:
-            continue
-        vistos.add(clave)
-        limpios.append(nombre)
-    return limpios
-
-
 def revisar_correo(candidato: CorreoCandidato, pdfs: list[tuple[Adjunto, bytes]]) -> RevisionIA:
     if not OPENAI_API_KEY:
         raise AIReviewError("Falta OPENAI_API_KEY en .env.")
@@ -99,31 +65,21 @@ def revisar_correo(candidato: CorreoCandidato, pdfs: list[tuple[Adjunto, bytes]]
     imagenes = imagenes[:4]
 
     clase = tipo_hilo(candidato.asunto)
-    checklist = "\n".join(f"- {campo}" for campo in CAMPOS_OBLIGATORIOS)
     prompt = f"""Eres un agente que revisa correos de ventas de Osnet / GoFiberX.
 
-Decide si el mensaje y sus archivos son el recibido de un CONTRATO DE SERVICIO FIRMADO por el cliente
-(no cotización, no borrador interno, no guía, no prueba, no solo firma pendiente).
+Tu tarea es validar ÚNICAMENTE dos cosas:
+1. Si el mensaje y sus archivos corresponden a un CONTRATO DE SERVICIO FIRMADO por el cliente
+   (no cotización, no borrador interno, no guía, no prueba, no solo firma pendiente).
+2. Si tiene un ticket_id (# Ticket, TICKET o TICKET_ID). Búscalo en la primera página del contrato o en el asunto/cuerpo del correo.
+   Normalmente es un número (de 4 a 10 dígitos). No inventes un ticket. Si no está, ticket_id debe ser null.
+
+NO es necesario validar si los demás campos del formulario están completos o no. Solo importa si está firmado y si tiene ticket.
 
 El correo puede ser un mensaje nuevo, una RESPUESTA (Re:/Resp:) o un REENVÍO (Fwd:/Fw:/RV:/Reenvío).
-Eso no lo invalida. Revisa el cuerpo citado del hilo y los adjuntos, incluidos PDFs que vengan
-dentro de un correo reenviado. Si hay un contrato firmado con ticket, trátalo como válido.
+Eso no lo invalida. Revisa el cuerpo citado del hilo y los adjuntos, incluidos PDFs que vengan dentro de un correo reenviado.
 
 Una respuesta tipo "gracias" o "recibido" SIN contrato firmado en los archivos no es un contrato.
 No uses un ticket que solo aparezca en un hilo viejo si no hay PDF de contrato en este mensaje.
-
-Si lo es, extrae el ticket_id. En estos contratos suele estar en la primera página junto a
-"# Ticket", "TICKET" o "TICKET_ID". Es un número (normalmente 4 a 10 dígitos).
-No inventes un ticket. Si no está claro, ticket_id debe ser null.
-
-Si es un contrato firmado, revisa TAMBIÉN que los campos del formulario residencial estén llenos.
-Usa el texto extraído y las imágenes. Un campo está vacío si no tiene valor real: en blanco,
-solo guiones/underscores, "N/A", o ilegible. "Información adicional" es opcional.
-Si facturación e instalación usan la misma dirección, ambos campos pueden darse por llenos.
-No marques como vacías las cláusulas legales del reverso. No inventes valores.
-
-Campos obligatorios:
-{checklist}
 
 Tipo de hilo: {clase}
 Correo:
@@ -140,12 +96,10 @@ Texto extraído de los PDF:
 {chr(10).join(bloques_texto)[:12000]}
 
 Responde SOLO un JSON con estas claves:
-- es_contrato_firmado: boolean
-- ticket_id: string o null
-- motivo: string breve
-- archivo: nombre del PDF del contrato, o null
-- campos_completos: boolean (true solo si es contrato firmado y no falta ningún campo obligatorio)
-- campos_faltantes: lista de strings con los nombres de campos vacíos; [] si no falta ninguno
+- es_contrato_firmado: boolean (true solo si es contrato firmado por el suscriptor)
+- ticket_id: string o null (número de ticket encontrado)
+- motivo: string breve explicando la decisión
+- archivo: nombre del PDF del contrato correspondiente, o null
 """
 
     contenido: list[dict] = [{"type": "text", "text": prompt}]
@@ -166,8 +120,8 @@ Responde SOLO un JSON con estas claves:
                 {
                     "role": "system",
                     "content": (
-                        "Clasificas correos de contratos, extraes ticket_id y "
-                        "verificas que los campos del formulario estén llenos. Solo JSON válido."
+                        "Clasificas correos de contratos y extraes ticket_id. "
+                        "Solo verificas si está firmado y si tiene ticket. Solo JSON válido."
                     ),
                 },
                 {"role": "user", "content": contenido},
@@ -190,24 +144,15 @@ Responde SOLO un JSON con estas claves:
             ticket = solo or None
 
     es_contrato = bool(data.get("es_contrato_firmado"))
-    faltantes = _lista_campos(data.get("campos_faltantes")) if es_contrato else []
-    if es_contrato and not ticket and "# Ticket" not in faltantes:
+    faltantes: list[str] = []
+    if es_contrato and not ticket:
         faltantes.append("# Ticket")
-    if not es_contrato:
-        campos_completos = False
-    elif faltantes:
-        campos_completos = False
-    elif data.get("campos_completos") is False:
-        campos_completos = False
-        faltantes = ["(no se pudieron identificar los campos vacíos)"]
-    else:
-        campos_completos = True
 
     return RevisionIA(
         es_contrato_firmado=es_contrato,
         ticket_id=ticket,
         motivo=str(data.get("motivo") or "").strip() or "sin motivo",
         archivo=(str(data.get("archivo")).strip() if data.get("archivo") else None),
-        campos_completos=campos_completos,
+        campos_completos=bool(es_contrato and ticket),
         campos_faltantes=faltantes,
     )

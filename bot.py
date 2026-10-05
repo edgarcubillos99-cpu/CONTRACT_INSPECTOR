@@ -54,19 +54,13 @@ def _cerrar(candidato: CorreoCandidato) -> None:
 
 
 def _aviso_campos(revision: RevisionIA) -> str:
-    faltantes = revision.campos_faltantes or ["(no se detallaron)"]
-    lista = "\n".join(f"- {campo}" for campo in faltantes)
-    ticket = revision.ticket_id or "no se encontró"
     archivo = revision.archivo or "el PDF adjunto"
     return (
         "Hola,\n\n"
-        "El inspector automático de contratos revisó el adjunto y no puede "
-        "cargarlo porque faltan campos por completar:\n\n"
-        f"{lista}\n\n"
-        f"Archivo: {archivo}\n"
-        f"Ticket detectado: {ticket}\n\n"
-        "Complete el contrato y reenvíelo a este correo con la palabra "
-        '"contrato" en el asunto.\n\n'
+        "El inspector automático de contratos revisó el archivo adjunto y detectó un contrato firmado, "
+        "pero no se encontró el número de # Ticket correspondiente.\n\n"
+        f"Archivo: {archivo}\n\n"
+        "Por favor asegúrese de incluir el número de ticket y reenvíe este correo.\n\n"
         "Saludos,\n"
         "Inspector de contratos Osnet"
     )
@@ -77,8 +71,11 @@ def _avisar_incompleto(candidato: CorreoCandidato, revision: RevisionIA) -> None
     if not REPLY_INCOMPLETE:
         print("  REPLY_INCOMPLETE=false: no se envió aviso.")
         return
-    responder_mensaje(candidato.uid, _aviso_campos(revision))
-    print(f"  Aviso de campos incompletos enviado a {destino}.")
+    try:
+        responder_mensaje(candidato.uid, _aviso_campos(revision))
+        print(f"  Aviso de ticket faltante enviado a {destino}.")
+    except Exception as exc:
+        print(f"  No se pudo enviar respuesta por correo ({exc}). Continuando...")
 
 
 def _procesar(candidato: CorreoCandidato) -> None:
@@ -95,13 +92,8 @@ def _procesar(candidato: CorreoCandidato) -> None:
         print("  La IA no lo clasificó como contrato firmado.")
         _cerrar(candidato)
         return
-    if not revision.campos_completos:
-        print(f"  Campos incompletos: {', '.join(revision.campos_faltantes) or 'sin detalle'}")
-        _avisar_incompleto(candidato, revision)
-        _cerrar(candidato)
-        return
     if not revision.ticket_id:
-        print("  La IA no encontró ticket_id.")
+        print("  La IA no encontró ticket_id en el contrato ni en el correo.")
         _avisar_incompleto(candidato, revision)
         _cerrar(candidato)
         return
